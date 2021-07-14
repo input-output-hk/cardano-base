@@ -46,8 +46,10 @@ library
                         Test.Crypto.Util
                         Test.Crypto.VRF
                         Test.Crypto.Instances
+                        Bench.Crypto.DSIGN
                         Bench.Crypto.VRF
                         Bench.Crypto.KES
+                        Bench.Crypto.BenchData
 
   build-depends:        base
                       , bytestring
@@ -57,6 +59,7 @@ library
                       , cardano-prelude
                       , cborg
                       , cryptonite
+                      , deepseq
                       , formatting
                       , nothunks
                       , QuickCheck
