@@ -2,6 +2,10 @@
 
 ## 2.6.0.0
 
+* Add `unsafeBlsUncompress` and `unsafeBlsDeserialize` to
+  `Cardano.Crypto.EllipticCurve.BLS12_381`: like `blsUncompress` /
+  `blsDeserialize` but without the (expensive) subgroup membership check, for
+  decoding points that are already known to be in the subgroup.
 * Replace memory dependency with ram (drop in replacement)
 * Depend on crypton ^>- 1.1
 * Fix the DST used when hashing the public key for BLS12-381 proofs of possession:
