@@ -155,6 +155,8 @@ module Cardano.Crypto.EllipticCurve.BLS12_381.Internal (
   blsSerialize,
   blsUncompress,
   blsDeserialize,
+  unsafeBlsUncompress,
+  unsafeBlsDeserialize,
   blsHash,
   blsGenerator,
   blsIsInf,
@@ -946,35 +948,68 @@ blsCneg in1 cond = unsafePerformIO $ do
 blsNeg :: BLS curve => Point curve -> Point curve
 blsNeg p = blsCneg p True
 
+-- | Decode a compressed point, checking that it is a valid encoding, that it
+-- lies on the curve and that it is in the prime-order subgroup.
 blsUncompress :: forall curve. BLS curve => ByteString -> Either BLSTError (Point curve)
-blsUncompress bs = unsafePerformIO $ do
+blsUncompress bs = unsafeBlsUncompress bs >>= checkInGroup
+
+-- | Decode an uncompressed (serialized) point, checking that it is a valid
+-- encoding, that it lies on the curve and that it is in the prime-order
+-- subgroup.
+blsDeserialize :: forall curve. BLS curve => ByteString -> Either BLSTError (Point curve)
+blsDeserialize bs = unsafeBlsDeserialize bs >>= checkInGroup
+
+checkInGroup :: BLS curve => Point curve -> Either BLSTError (Point curve)
+checkInGroup p
+  | blsInGroup p = Right p
+  | otherwise = Left BLST_POINT_NOT_IN_GROUP
+
+-- | Like 'blsUncompress', but __skips the subgroup check__, which is the
+-- expensive part of decoding. The encoding is still validated and the point is
+-- still guaranteed to be on the curve, since decompression computes @y@ from
+-- @x@.
+--
+-- Only use this on bytes that are already known to encode a subgroup element,
+-- e.g. bytes produced by 'blsCompress', or bytes that were accepted by
+-- 'blsUncompress' earlier and have been stored since.
+--
+-- The risk is cryptographic, not memory safety: blst treats any on-curve
+-- point as a plain fixed-size value, so a point outside the subgroup cannot
+-- cause out-of-bounds access or a crash. It does silently break the
+-- invariant that every 'Point' is in the subgroup, which the rest of this
+-- module and blst rely on for correctness:
+--
+-- * 'blsMult' reduces the scalar modulo 'scalarPeriod' and blst uses the GLV
+--   endomorphism for full-size scalars; both are only valid in the subgroup,
+--   so the result is wrong (yet still an on-curve point).
+-- * Pairings with such a point are not bilinear over the intended group, and
+--   accepting attacker-chosen points outside the subgroup enables
+--   small-subgroup and rogue-key style attacks on signatures and aggregates.
+-- * blst does not detect any of this, and later operations raise no error.
+unsafeBlsUncompress :: forall curve. BLS curve => ByteString -> Either BLSTError (Point curve)
+unsafeBlsUncompress bs = unsafePerformIO $ do
   BSU.unsafeUseAsCStringLen bs $ \(bytes, numBytes) ->
     if numBytes == compressedSizePoint (Proxy @curve)
       then do
         (err, affine) <- withNewAffine $ \ap -> c_blst_uncompress ap bytes
-        let p = fromAffine affine
         if err /= 0
           then return $ Left $ mkBLSTError err
-          else
-            if blsInGroup p
-              then return $ Right p
-              else return $ Left BLST_POINT_NOT_IN_GROUP
+          else return $ Right $ fromAffine affine
       else do
         return $ Left BLST_BAD_ENCODING
 
-blsDeserialize :: forall curve. BLS curve => ByteString -> Either BLSTError (Point curve)
-blsDeserialize bs = unsafePerformIO $ do
+-- | Like 'blsDeserialize', but __skips the subgroup check__. The encoding is
+-- still validated and the point is still checked to lie on the curve. See
+-- 'unsafeBlsUncompress' for when this is sound and what goes wrong otherwise.
+unsafeBlsDeserialize :: forall curve. BLS curve => ByteString -> Either BLSTError (Point curve)
+unsafeBlsDeserialize bs = unsafePerformIO $ do
   BSU.unsafeUseAsCStringLen bs $ \(bytes, numBytes) ->
     if numBytes == serializedSizePoint (Proxy @curve)
       then do
         (err, affine) <- withNewAffine $ \ap -> c_blst_deserialize ap bytes
-        let p = fromAffine affine
         if err /= 0
           then return $ Left $ mkBLSTError err
-          else
-            if blsInGroup p
-              then return $ Right p
-              else return $ Left BLST_POINT_NOT_IN_GROUP
+          else return $ Right $ fromAffine affine
       else do
         return $ Left BLST_BAD_ENCODING
 

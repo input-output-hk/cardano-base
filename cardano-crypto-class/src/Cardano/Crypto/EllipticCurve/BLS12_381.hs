@@ -28,6 +28,8 @@ module Cardano.Crypto.EllipticCurve.BLS12_381 (
   blsSerialize,
   blsUncompress,
   blsDeserialize,
+  unsafeBlsUncompress,
+  unsafeBlsDeserialize,
   blsHash,
   blsGenerator,
   blsIsInf,
